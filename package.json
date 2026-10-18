@@ -1,0 +1,19 @@
+
+{
+  "name": "d4-strazh",
+  "version": "1.0.0",
+  "description": "Diablo IV bug tracker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "web-push": "^3.6.7"
+  }
+}
