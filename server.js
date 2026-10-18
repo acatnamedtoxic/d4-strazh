@@ -31,11 +31,35 @@ const monitor = {
 
 const FEED_URL = "https://news.blizzard.com/en-us/feed/diablo-4";
 
+function decodeHtml(value) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, n) =>
+      String.fromCodePoint(Number(n))
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+      String.fromCodePoint(parseInt(n, 16))
+    );
+}
+
+function cleanText(value) {
+  return decodeHtml(
+    value
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/g, " ")
+  ).replace(/\s+/g, " ").trim();
+}
+
 function saveIssue(title, source, url) {
   if (!title || !url) return false;
 
   const exists = db.prepare(
-    "SELECT id FROM issues WHERE url = ? AND url != ''"
+    "SELECT id FROM issues WHERE url = ?"
   ).get(url);
 
   if (exists) return false;
@@ -55,70 +79,61 @@ async function checkFeed() {
 
   try {
     const response = await fetch(FEED_URL, {
-      headers: { "User-Agent": "D4Strazh/1.0" },
-      signal: AbortSignal.timeout(15000)
+      headers: {
+        "User-Agent": "Mozilla/5.0 D4Strazh/1.0",
+        "Accept": "text/html,application/xml,*/*"
+      },
+      signal: AbortSignal.timeout(20000)
     });
 
     if (!response.ok) {
-      throw new Error(`Blizzard feed HTTP ${response.status}`);
+      throw new Error(`Blizzard HTTP ${response.status}`);
     }
 
     const body = await response.text();
-    const entries = body.match(
-      /<(item|entry)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
-    ) || [];
 
-    if (!entries.length) {
+    const links = [
+      ...body.matchAll(
+        /<a\b[^>]*href=["']([^"']*\/en-us\/article\/[^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>/gi
+      )
+    ];
+
+    const articles = new Map();
+
+    for (const match of links) {
+      let url = decodeHtml(match[1]).trim();
+
+      if (url.startsWith("/")) {
+        url = "https://news.blizzard.com" + url;
+      }
+
+      if (!url.startsWith("https://news.blizzard.com/")) {
+        continue;
+      }
+
+      const title = cleanText(match[2]);
+
+      if (!title || title.length < 8) continue;
+
+      if (!articles.has(url)) {
+        articles.set(url, title);
+      }
+    }
+
+    if (articles.size === 0) {
       throw new Error(
-        "Blizzard feed format is unsupported or contains no entries"
+        "Blizzard returned a page, but no article links were found"
       );
     }
 
-    for (const entry of entries) {
-      const titleMatch = entry.match(
-        /<(?:[\w.-]+:)?title\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?title\s*>/i
-      );
-
-      const title = (titleMatch?.[1] || "")
-        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-        .replace(/<[^>]*>/g, "")
-        .replace(/&amp;/g, "&")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .trim();
-
-      const linkTag = entry.match(/<link\b[^>]*>/i);
-      const href = linkTag?.[0].match(/\bhref=["']([^"']+)["']/i);
-      const textLink = entry.match(
-        /<link\b[^>]*>([\s\S]*?)<\/link\s*>/i
-      );
-
-      const url = href?.[1] || textLink?.[1]?.trim() || "";
-
-      const searchable = entry
-        .replace(/<[^>]*>/g, " ")
-        .toLowerCase();
-
-      const relevant =
-        /diablo iv|diablo 4|patch notes|hotfix|exploit|vulnerab|security|cve|known issue/.test(
-          `${title.toLowerCase()} ${searchable}`
-        );
-
-      if (
-        relevant &&
-        title &&
-        /^https:\/\/news\.blizzard\.com\//i.test(url)
-      ) {
-        if (saveIssue(title, "Blizzard News", url)) {
-          monitor.lastFound++;
-        }
+    for (const [url, title] of articles) {
+      if (saveIssue(title, "Blizzard News", url)) {
+        monitor.lastFound++;
       }
     }
 
     console.log(
-      `D4 Страж: проверка завершена, новых записей: ${monitor.lastFound}`
+      `D4 Страж: проверка завершена, найдено статей: ${articles.size}, новых записей: ${monitor.lastFound}`
     );
   } catch (error) {
     monitor.error = error.message;
@@ -158,7 +173,7 @@ app.get("/api/state", (req, res) => {
     lastFound: monitor.lastFound,
     error: monitor.error,
     message: monitor.error ||
-      "Monitoring official Blizzard news feed"
+      "Checking official Blizzard news"
   });
 });
 
