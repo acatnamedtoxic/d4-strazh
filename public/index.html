@@ -2,542 +2,75 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>D4 Страж — Progression Intelligence</title>
   <style>
     :root {
       --bg: #0c0d10;
       --card: #15171e;
-      --card-border: #262936;
+      --border: #262936;
       --text: #e6e8f0;
       --muted: #9399ad;
       --accent: #d97706;
-      --accent-hover: #f59e0b;
-      --high: #10b981;
-      --medium: #3b82f6;
-      --low: #6b7280;
-      --danger: #ef4444;
-      --warn: #f59e0b;
     }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.45;
-      padding-bottom: 48px;
-    }
-
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: rgba(12, 13, 16, 0.92);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--card-border);
-      padding: 12px 16px;
-    }
-
-    .header-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      max-width: 980px;
-      margin: 0 auto;
-    }
-
-    .brand h1 {
-      font-size: 1.15rem;
-      font-weight: 700;
-      letter-spacing: 0.3px;
-      color: #fff;
-    }
-
-    .brand p {
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-
-    .btn-refresh {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 9px 14px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.15s;
-    }
-    .btn-refresh:disabled { opacity: 0.55; cursor: wait; }
-    .btn-refresh:hover:not(:disabled) { background: var(--accent-hover); }
-
-    .container {
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 12px 16px;
-    }
-
-    /* Статус-бар */
-    .status-bar {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-
-    .stat-box {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 10px 12px;
-    }
-
-    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; }
-    .stat-value { font-size: 1rem; font-weight: 700; margin-top: 2px; }
-
-    /* Поиск и селекты */
-    .controls-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    @media (min-width: 640px) {
-      .controls-grid { grid-template-columns: 2fr 1fr 1fr 1fr; }
-    }
-
-    input[type="search"], select {
-      width: 100%;
-      background: var(--card);
-      color: var(--text);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 0.88rem;
-      outline: none;
-    }
-
-    input[type="search"]:focus, select:focus {
-      border-color: var(--accent);
-    }
-
-    /* Горизонтальные чипы категорий */
-    .category-chips {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 6px;
-      margin-bottom: 14px;
-      scrollbar-width: none;
-    }
-    .category-chips::-webkit-scrollbar { display: none; }
-
-    .chip {
-      background: var(--card);
-      color: var(--muted);
-      border: 1px solid var(--card-border);
-      border-radius: 999px;
-      padding: 7px 13px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      white-space: nowrap;
-      cursor: pointer;
-    }
-    .chip.active {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-
-    /* Панель источников */
-    details.sources-panel {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 10px 12px;
-      margin-bottom: 16px;
-    }
-    details.sources-panel summary {
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--muted);
-    }
-    .source-list {
-      margin-top: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .source-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.8rem;
-      padding: 6px 8px;
-      background: rgba(255,255,255,0.02);
-      border-radius: 6px;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    /* Карточки находок */
-    .cards-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .card-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .badge {
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 6px;
-      text-transform: uppercase;
-    }
-
-    .badge-cat { background: #262936; color: #fff; }
-    .badge-high { background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
-    .badge-medium { background: rgba(59, 130, 246, 0.18); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.35); }
-    .badge-low { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
-    .badge-unverified { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
-    .badge-official { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-    .badge-fresh-current { color: #34d399; font-size: 0.75rem; font-weight: 600; }
-    .badge-fresh-outdated { color: #fbbf24; font-size: 0.75rem; font-weight: 600; }
-    .badge-fresh-patched { color: #f87171; font-size: 0.75rem; font-weight: 600; }
-
-    .card-title {
-      font-size: 1.02rem;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .card-summary {
-      font-size: 0.88rem;
-      color: var(--text);
-    }
-
-    .card-why {
-      font-size: 0.82rem;
-      color: #cbd5e1;
-      background: rgba(255, 255, 255, 0.03);
-      border-left: 3px solid var(--accent);
-      padding: 8px 10px;
-      border-radius: 4px;
-    }
-
-    .card-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      font-size: 0.76rem;
-      color: var(--muted);
-    }
-
-    .card-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-      padding-top: 10px;
-      border-top: 1px solid var(--card-border);
-      gap: 10px;
-    }
-
-    .btn-source {
-      display: inline-block;
-      background: #2563eb;
-      color: #fff;
-      text-decoration: none;
-      font-size: 0.84rem;
-      font-weight: 600;
-      padding: 8px 14px;
-      border-radius: 8px;
-      text-align: center;
-    }
-    .btn-source:hover { background: #1d4ed8; }
-
-    .empty-state {
-      text-align: center;
-      padding: 36px 16px;
-      color: var(--muted);
-      background: var(--card);
-      border-radius: 12px;
-      border: 1px dashed var(--card-border);
-    }
+    body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; padding: 16px; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    h1 { font-size: 1.2rem; margin: 0; }
+    button { background: var(--accent); color: #fff; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .badges { display: flex; gap: 6px; font-size: 0.7rem; margin-bottom: 6px; }
+    .badge { background: #262936; padding: 2px 6px; border-radius: 4px; }
+    .title { font-weight: bold; font-size: 1rem; margin-bottom: 4px; }
+    .summary { font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
+    .footer { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); align-items: center; }
+    a { color: #60a5fa; text-decoration: none; }
   </style>
 </head>
 <body>
-
   <header>
-    <div class="header-top">
-      <div class="brand">
-        <h1>D4 Страж</h1>
-        <p>Diablo IV Progression Intelligence Dashboard</p>
-      </div>
-      <button id="refreshBtn" class="btn-refresh" onclick="triggerRefresh()">Обновить данные</button>
+    <div>
+      <h1>D4 Страж</h1>
+      <span style="font-size:0.75rem; color:var(--muted);">Progression Intelligence Dashboard</span>
     </div>
+    <button onclick="triggerRefresh()">Обновить</button>
   </header>
 
-  <main class="container">
-    <!-- Сводка состояния -->
-    <section class="status-bar">
-      <div class="stat-box">
-        <div class="stat-label">Последняя проверка</div>
-        <div id="lastCheckVal" class="stat-value">—</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Полезных находок</div>
-        <div id="totalUsefulVal" class="stat-value">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Новых за цикл</div>
-        <div id="newCountVal" class="stat-value">0</div>
-      </div>
-    </section>
-
-    <!-- Статус источников -->
-    <details class="sources-panel">
-      <summary id="sourcesSummary">Статус источников мониторинга (нажмите для просмотра)</summary>
-      <div id="sourcesList" class="source-list"></div>
-    </details>
-
-    <!-- Быстрые чипы категорий -->
-    <div class="category-chips" id="categoryChips">
-      <button class="chip active" data-cat="ALL">Все категории</button>
-      <button class="chip" data-cat="XP / Paragon">XP / Paragon</button>
-      <button class="chip" data-cat="Gear / Mythics">Gear / Mythics</button>
-      <button class="chip" data-cat="Materials">Materials</button>
-      <button class="chip" data-cat="Speed Farming">Speed Farming</button>
-      <button class="chip" data-cat="Builds / Meta">Builds / Meta</button>
-      <button class="chip" data-cat="Gold">Gold</button>
-      <button class="chip" data-cat="Patch Changes">Patch Changes</button>
-      <button class="chip" data-cat="Exploits">Exploits ⚠️</button>
-    </div>
-
-    <!-- Фильтры и поиск -->
-    <section class="controls-grid">
-      <input type="search" id="searchInput" placeholder="Поиск: Obducite, Spiritborn, Pit, Shako, Paragon..." />
-      <select id="benefitFilter">
-        <option value="ALL">Польза: Любая</option>
-        <option value="High">Польза: High (Высокая)</option>
-        <option value="Medium">Польза: Medium (Средняя)</option>
-        <option value="Low">Польза: Low (Низкая)</option>
-      </select>
-      <select id="confidenceFilter">
-        <option value="ALL">Достоверность: Все</option>
-        <option value="Official">Official (Blizzard)</option>
-        <option value="Verified by source">Verified by source</option>
-        <option value="Community report">Community report</option>
-        <option value="Unverified">Unverified</option>
-      </select>
-      <select id="sortSelect">
-        <option value="smart">Сортировка: Польза + Дата</option>
-        <option value="date">Сортировка: Сначала новые</option>
-        <option value="benefit">Сортировка: По максимальной пользе</option>
-      </select>
-    </section>
-
-    <!-- Список карточек -->
-    <section id="cardsContainer" class="cards-list"></section>
-  </main>
+  <div id="cards">Загрузка находок...</div>
 
   <script>
-    let selectedCategory = 'ALL';
-
-    function formatDate(isoStr) {
-      if (!isoStr) return 'Дата не указана';
-      const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return isoStr;
-      return d.toLocaleString('ru-RU', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      });
-    }
-
-    function escapeHtml(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    async function loadState() {
-      try {
-        const res = await fetch('/api/state');
-        const data = await res.json();
-
-        document.getElementById('lastCheckVal').textContent = data.lastCheck ? formatDate(data.lastCheck) : 'Ещё не проверялось';
-        document.getElementById('totalUsefulVal').textContent = data.totalUsefulCount ?? 0;
-        document.getElementById('newCountVal').textContent = data.lastCycleNewCount ?? 0;
-
-        const sourcesList = document.getElementById('sourcesList');
-        const sources = data.sources || [];
-        const okCount = sources.filter(s => s.health_state === 'ok').length;
-        document.getElementById('sourcesSummary').textContent =
-          `Статус источников: ${okCount} из ${sources.length} доступны напрямую`;
-
-        sourcesList.innerHTML = sources.map(s => {
-          let stateBadge = `<span style="color:#34d399;font-weight:700;">OK (HTTP ${s.http_status || 200})</span>`;
-          if (s.health_state === 'restricted') {
-            stateBadge = `<span style="color:#fbbf24;font-weight:700;">Ограничен (HTTP ${s.http_status})</span>`;
-          } else if (s.health_state === 'error') {
-            stateBadge = `<span style="color:#f87171;font-weight:700;">Ошибка (${escapeHtml(s.error_message || 'Недоступен')})</span>`;
-          }
-          return `
-            <div class="source-item">
-              <div>
-                <strong>${escapeHtml(s.name)}</strong>
-                <div style="font-size:0.72rem;color:#9399ad;">Проверено: ${formatDate(s.last_checked)} • Полезных записей: ${s.items_found || 0}</div>
-              </div>
-              <div>${stateBadge}</div>
-            </div>
-          `;
-        }).join('');
-      } catch (err) {
-        console.error('Ошибка загрузки /api/state:', err);
-      }
-    }
-
     async function loadIssues() {
-      const container = document.getElementById('cardsContainer');
-      const q = document.getElementById('searchInput').value;
-      const benefit = document.getElementById('benefitFilter').value;
-      const confidence = document.getElementById('confidenceFilter').value;
-      const sort = document.getElementById('sortSelect').value;
-
-      const params = new URLSearchParams({
-        category: selectedCategory,
-        benefit,
-        confidence,
-        sort,
-        q
-      });
-
-      try {
-        const res = await fetch(`/api/issues?${params.toString()}`);
-        const items = await res.json();
-
-        if (!Array.isArray(items) || items.length === 0) {
-          container.innerHTML = `
-            <div class="empty-state">
-              По выбранным фильтрам находок пока нет. Нажмите «Обновить данные» или сбросьте фильтры.
-            </div>
-          `;
-          return;
-        }
-
-        container.innerHTML = items.map(item => {
-          const benefitClass =
-            item.benefit_score === 'High' ? 'badge-high' :
-            item.benefit_score === 'Medium' ? 'badge-medium' : 'badge-low';
-
-          const confClass =
-            item.confidence === 'Unverified' ? 'badge-unverified' :
-            item.confidence === 'Official' ? 'badge-official' : 'badge-cat';
-
-          const freshClass =
-            item.freshness === 'Current' ? 'badge-fresh-current' :
-            item.freshness === 'Patched' ? 'badge-fresh-patched' : 'badge-fresh-outdated';
-
-          return `
-            <article class="card">
-              <div class="card-badges">
-                <span class="badge badge-cat">${escapeHtml(item.category)}</span>
-                <span class="badge ${benefitClass}">Польза: ${escapeHtml(item.benefit_score)}</span>
-                <span class="badge ${confClass}">${escapeHtml(item.confidence)}</span>
-                <span class="${freshClass}">● ${escapeHtml(item.freshness)}</span>
-              </div>
-
-              <div class="card-title">${escapeHtml(item.title)}</div>
-              <div class="card-summary">${escapeHtml(item.summary)}</div>
-
-              <div class="card-why">
-                <strong>Почему полезно:</strong> ${escapeHtml(item.benefit_reason)}<br/>
-                <strong>Условия:</strong> ${escapeHtml(item.requirements || 'Не указаны')}
-              </div>
-
-              <div class="card-meta">
-                <span>Источник: <strong>${escapeHtml(item.source)}</strong></span>
-                <span>Версия: <strong>${escapeHtml(item.patch_version)}</strong></span>
-                <span>Опубликовано: ${formatDate(item.published_at)}</span>
-                <span>Обнаружено: ${formatDate(item.discovered_at || item.created_at)}</span>
-              </div>
-
-              <div class="card-footer">
-                <span style="font-size:0.75rem;color:#9399ad;">ID #${item.id}</span>
-                <a class="btn-source" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
-                  Открыть источник ↗
-                </a>
-              </div>
-            </article>
-          `;
-        }).join('');
-      } catch (err) {
-        container.innerHTML = `<div class="empty-state">Ошибка при загрузке данных: ${escapeHtml(err.message)}</div>`;
+      const res = await fetch('/api/issues');
+      const items = await res.json();
+      const container = document.getElementById('cards');
+      
+      if (!items.length) {
+        container.innerHTML = '<div class="card">Полезных находок пока нет.</div>';
+        return;
       }
+
+      container.innerHTML = items.map(item => `
+        <div class="card">
+          <div class="badges">
+            <span class="badge">${item.category}</span>
+            <span class="badge" style="background:#1e3a8a;">${item.content_type}</span>
+            <span class="badge" style="background:#065f46;">Польза: ${item.benefit_score}</span>
+            <span class="badge">${item.confidence}</span>
+          </div>
+          <div class="title">${item.title}</div>
+          <div class="summary">${item.summary}</div>
+          <div class="footer">
+            <span>Источник: ${item.source}</span>
+            <a href="${item.url}" target="_blank">Открыть ↗</a>
+          </div>
+        </div>
+      `).join('');
     }
 
     async function triggerRefresh() {
-      const btn = document.getElementById('refreshBtn');
-      btn.disabled = true;
-      btn.textContent = 'Проверка источников...';
-      try {
-        await fetch('/api/refresh', { method: 'POST' });
-        await loadState();
-        await loadIssues();
-      } catch (err) {
-        alert('Ошибка обновления: ' + err.message);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Обновить данные';
-      }
+      await fetch('/api/refresh', { method: 'POST' });
+      loadIssues();
     }
 
-    // Обработчики событий
-    document.getElementById('categoryChips').addEventListener('click', (e) => {
-      const btn = e.target.closest('.chip');
-      if (!btn) return;
-      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      selectedCategory = btn.getAttribute('data-cat');
-      loadIssues();
-    });
-
-    ['benefitFilter', 'confidenceFilter', 'sortSelect'].forEach(id => {
-      document.getElementById(id).addEventListener('change', loadIssues);
-    });
-
-    let searchTimer;
-    document.getElementById('searchInput').addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadIssues, 250);
-    });
-
-    // Инициализация
-    loadState();
     loadIssues();
   </script>
 </body>
