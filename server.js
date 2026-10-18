@@ -22,6 +22,21 @@ db.exec(`
   )
 `);
 
+// Add columns to existing databases without deleting old records.
+const columns = new Set(
+  db.prepare("PRAGMA table_info(issues)").all().map(c => c.name)
+);
+
+for (const [name, type] of [
+  ["category", "TEXT NOT NULL DEFAULT 'OTHER'"],
+  ["benefit", "TEXT NOT NULL DEFAULT ''"],
+  ["checked_at", "TEXT NOT NULL DEFAULT ''"]
+]) {
+  if (!columns.has(name)) {
+    db.exec(`ALTER TABLE issues ADD COLUMN ${name} ${type}`);
+  }
+}
+
 const monitor = {
   enabled: true,
   lastChecked: null,
@@ -37,95 +52,177 @@ const BLIZZARD_API =
 const FORUM_URL =
   "https://us.forums.blizzard.com/en/d4/c/bug-report/7.json";
 
-const REDDIT_URL =
-  "https://www.reddit.com/r/diablo4/search.json?" +
-  new URLSearchParams({
-    q: "dupe OR duping OR duplication OR exploit OR gold bug",
-    restrict_sr: "1",
-    sort: "new",
-    t: "month",
-    limit: "50"
-  });
+// Public guide pages. These are best-effort checks, not full web searches.
+const GUIDE_PAGES = [
+  {
+    name: "Icy Veins News",
+    url: "https://www.icy-veins.com/news/",
+    host: "www.icy-veins.com"
+  },
+  {
+    name: "Icy Veins Leveling",
+    url: "https://www.icy-veins.com/d4/guides/leveling-tier-list/",
+    host: "www.icy-veins.com"
+  },
+  {
+    name: "Icy Veins Speed Farming",
+    url: "https://www.icy-veins.com/d4/guides/speed-farming-tier-list/",
+    host: "www.icy-veins.com"
+  },
+  {
+    name: "D4Guides",
+    url: "https://d4guides.gg/",
+    host: "d4guides.gg"
+  }
+];
 
 function classify(text) {
   const s = String(text || "").toLowerCase();
 
-  const duping =
-    /\bdupe(?:d|s|ing)?\b|\bduplication\b|\bduplicat(?:e|ed|ing|ion)\b|\bitem cloning\b/.test(s);
-
-  const economy =
-    /\bgold\b|\bcurrency\b|\brunes?\b|\bgems?\b|\bkeys\b|\btrading\b|\btrade\b|\beconomy\b|\bmarket\b/.test(s);
-
-  const exploit =
-    /\bexploit\b|\babuse\b|\bbypass\b|\bunintended interaction\b|\binfinite\b|\bunlimited\b|\brollback\b/.test(s);
-
-  const itemRelated =
-    /\bitems?\b|\bgear\b|\bcrafting\b|\btransfigur\w*\b|\baffixes?\b|\bloot\b|\bstash\b|\bdrops?\b|\btrade\b|\bgold\b|\brunes?\b|\bgems?\b|\bkeys\b/.test(s);
-
-  const bug =
-    /\bbug(?:ged|s)?\b|\bglitch\b|\bnot working\b|\bdoesn't work\b|\bdoes not work\b|\bbroken\b|\bmissing loot\b|\bwrong amount\b/.test(s);
-
-  if (duping && (economy || itemRelated)) {
-    return { label: "DUPING / ECONOMY", severity: "HIGH" };
-  }
-
-  if (exploit && itemRelated) {
+  if (
+    /\bdupe(?:d|s|ing)?\b|\bduplication\b|\bitem cloning\b|\bexploit\b|\bunintended interaction\b|\binfinite gold\b|\binfinite materials\b|\brollback\b/.test(s)
+  ) {
     return {
-      label: economy ? "ECONOMY EXPLOIT" : "GAMEPLAY EXPLOIT",
-      severity: economy ? "HIGH" : "MEDIUM"
+      category: "EXPLOIT",
+      severity: "HIGH",
+      benefit: "Возможный эксплойт. Не подтверждён: проверь дату, патч и официальные сообщения."
     };
   }
 
-  if (bug && itemRelated) {
-    return { label: "ITEM / LOOT BUG", severity: "MEDIUM" };
+  if (
+    /\bparagon\b|\bexperience farm\b|\bexp farm\b|\bxp farm\b|\bleveling\b|\blevelling\b|\bfast leveling\b|\bleveling tier\b/.test(s)
+  ) {
+    return {
+      category: "XP / PARAGON",
+      severity: "MEDIUM",
+      benefit: "Возможность быстрее получать XP или Paragon. Проверь актуальность для своего этапа игры."
+    };
+  }
+
+  if (
+    /\bmythic\b|\bmythics\b|\buber unique\b|\bunique farming\b|\bgear farming\b|\bloot farming\b|\bdrop rate\b|\bboss loot\b|\btarget farming\b|\btormented boss\b/.test(s)
+  ) {
+    return {
+      category: "GEAR / MYTHICS",
+      severity: "MEDIUM",
+      benefit: "Возможность эффективнее добывать экипировку или Mythic-уникалки. Сверь источники лута и затраты."
+    };
+  }
+
+  if (
+    /\bgold farm\b|\bfarming gold\b|\bgold farming\b|\bgold\b|\btrading\b|\btrade economy\b/.test(s)
+  ) {
+    return {
+      category: "GOLD / TRADE",
+      severity: "MEDIUM",
+      benefit: "Возможность заработать или сэкономить золото. Проверь цены и актуальные правила торговли."
+    };
+  }
+
+  if (
+    /\bmaterials? farm\b|\bfarming materials\b|\bcrafting materials\b|\bmasterworking materials\b|\bobducite\b|\bforgotten souls\b|\bveiled crystals\b|\bmaterial farming\b/.test(s)
+  ) {
+    return {
+      category: "MATERIALS",
+      severity: "MEDIUM",
+      benefit: "Возможность быстрее собрать ресурсы для улучшения экипировки."
+    };
+  }
+
+  if (
+    /\bbuild guide\b|\bbest builds\b|\btier list\b|\bendgame build\b|\bleveling build\b|\bspeed farming\b|\bspeedfarm\b|\bfarm build\b|\bmeta build\b|\bclass guide\b/.test(s)
+  ) {
+    return {
+      category: "BUILDS / FARM",
+      severity: "LOW",
+      benefit: "Полезный билд или фарм-маршрут. Проверь класс, сезон и версию патча."
+    };
+  }
+
+  const progression =
+    /\b(loot|drop|mythic|unique|gold|material|experience|paragon|leveling|crafting|boss|reward|stash|trade)\b/.test(s);
+
+  const bug =
+    /\bbug\b|\bglitch\b|\bnot working\b|\bdoesn't work\b|\bdoes not work\b|\bbroken\b|\bmissing loot\b|\bwrong amount\b|\bhotfix\b|\bfix(?:ed|es)?\b/.test(s);
+
+  if (progression && bug) {
+    return {
+      category: "PROGRESSION BUG",
+      severity: "MEDIUM",
+      benefit: "Возможная проблема с добычей или прокачкой. Сообщение игрока не подтверждает её достоверность."
+    };
   }
 
   return null;
 }
 
-async function getJson(url) {
+async function fetchText(url, accept = "text/html,application/json") {
   const response = await fetch(url, {
     headers: {
-      "User-Agent": "D4Strazh/2.0 (public game issue monitoring)",
-      "Accept": "application/json"
+      "User-Agent": "D4-Strazh/3.0 (personal public-source monitor)",
+      "Accept": accept
     },
-    signal: AbortSignal.timeout(20000)
+    signal: AbortSignal.timeout(20000),
+    redirect: "follow"
   });
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
 
-  return response.json();
+  return response.text();
+}
+
+async function getJson(url) {
+  return JSON.parse(await fetchText(url, "application/json"));
 }
 
 function saveIssue(title, source, url, classification) {
   if (!title || !url || !classification) return false;
+  if (!url.startsWith("https://")) return false;
 
-  const exists = db.prepare(
+  const existing = db.prepare(
     "SELECT id FROM issues WHERE url = ? AND url != ''"
   ).get(url);
 
-  if (exists) return false;
+  if (existing) {
+    db.prepare(`
+      UPDATE issues
+      SET category = ?, benefit = ?, checked_at = ?
+      WHERE id = ?
+    `).run(
+      classification.category,
+      classification.benefit,
+      new Date().toISOString(),
+      existing.id
+    );
+    return false;
+  }
 
   const taggedTitle =
-    `[${classification.severity} · ${classification.label}] ${title}`;
+    `[${classification.severity} · ${classification.category}] ${title}`;
 
   db.prepare(`
-    INSERT INTO issues (title, source, url, status)
-    VALUES (?, ?, ?, 'Unverified')
-  `).run(taggedTitle.slice(0, 300), source, url);
+    INSERT INTO issues
+      (title, source, url, status, category, benefit, checked_at)
+    VALUES (?, ?, ?, 'Unverified', ?, ?, ?)
+  `).run(
+    taggedTitle.slice(0, 300),
+    source,
+    url,
+    classification.category,
+    classification.benefit,
+    new Date().toISOString()
+  );
 
   return true;
 }
 
 function normalizeBlizzardUrl(value) {
   if (!value) return "";
-
   if (value.startsWith("/")) {
     return "https://news.blizzard.com" + value;
   }
-
   return value;
 }
 
@@ -145,21 +242,20 @@ async function checkBlizzardNews() {
 
     const title = String(article.title || "").trim();
     const url = normalizeBlizzardUrl(article.newsUrl);
-
-    const searchable = [
+    const text = [
       title,
       article.description,
       article.summary,
       article.shortDescription
     ].filter(Boolean).join(" ");
 
-    const classification = classify(searchable);
+    const result = classify(text);
 
     if (
-      classification &&
+      result &&
       url.startsWith("https://news.blizzard.com/")
     ) {
-      if (saveIssue(title, "Blizzard Official", url, classification)) {
+      if (saveIssue(title, "Blizzard Official", url, result)) {
         found++;
       }
     }
@@ -186,22 +282,14 @@ async function checkBlizzardForum() {
 
   for (const topic of topics) {
     const title = String(topic.title || "").trim();
-    const searchable = `${title} ${topic.excerpt || ""}`;
-    const classification = classify(searchable);
+    const result = classify(`${title} ${topic.excerpt || ""}`);
 
-    if (!classification || !topic.id || !topic.slug) continue;
+    if (!result || !topic.id || !topic.slug) continue;
 
     const url =
       `https://us.forums.blizzard.com/en/d4/t/${topic.slug}/${topic.id}`;
 
-    if (
-      saveIssue(
-        title,
-        "Blizzard Forum · Unverified report",
-        url,
-        classification
-      )
-    ) {
+    if (saveIssue(title, "Blizzard Forum · Unverified", url, result)) {
       found++;
     }
   }
@@ -215,47 +303,101 @@ async function checkBlizzardForum() {
   return found;
 }
 
-async function checkReddit() {
-  const data = await getJson(REDDIT_URL);
-  const posts = data?.data?.children;
+function decodeHtml(text) {
+  return String(text || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, " ");
+}
 
-  if (!Array.isArray(posts)) {
-    throw new Error("Reddit response has no posts list");
+function stripTags(text) {
+  return decodeHtml(String(text || "").replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractLinks(html, pageUrl, allowedHost) {
+  const results = [];
+  const regex =
+    /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match;
+
+  while ((match = regex.exec(html)) !== null) {
+    const title = stripTags(match[2]);
+    if (title.length < 8 || title.length > 220) continue;
+
+    let parsed;
+    try {
+      parsed = new URL(decodeHtml(match[1]), pageUrl);
+    } catch {
+      continue;
+    }
+
+    if (parsed.protocol !== "https:") continue;
+    if (parsed.hostname !== allowedHost) continue;
+    if (/\.(jpg|jpeg|png|gif|webp|svg|pdf)(\?|$)/i.test(parsed.pathname)) {
+      continue;
+    }
+
+    results.push({
+      title,
+      url: parsed.href.split("#")[0]
+    });
   }
 
+  return results;
+}
+
+async function checkGuidePage(page) {
+  const html = await fetchText(page.url);
+  const links = extractLinks(html, page.url, page.host);
+
   let found = 0;
+  let relevant = 0;
 
-  for (const entry of posts) {
-    const post = entry?.data;
-    if (!post) continue;
+  for (const link of links) {
+    const result = classify(link.title);
+    if (!result) continue;
 
-    const title = String(post.title || "").trim();
-    const searchable = `${title} ${post.selftext || ""}`;
-    const classification = classify(searchable);
+    relevant++;
 
-    if (!classification || !post.permalink) continue;
-
-    const url = post.permalink.startsWith("http")
-      ? post.permalink
-      : "https://www.reddit.com" + post.permalink;
-
-    if (
-      saveIssue(
-        title,
-        "Reddit · Unverified report",
-        url,
-        classification
-      )
-    ) {
+    if (saveIssue(link.title, page.name, link.url, result)) {
       found++;
     }
   }
 
-  monitor.sources.reddit = {
-    ok: true,
-    checked: posts.length,
+  return {
+    checked: links.length,
+    relevant,
     newItems: found
   };
+}
+
+async function checkGuides() {
+  let found = 0;
+
+  for (const page of GUIDE_PAGES) {
+    try {
+      const result = await checkGuidePage(page);
+
+      monitor.sources[page.name] = {
+        ok: true,
+        ...result
+      };
+
+      found += result.newItems;
+    } catch (error) {
+      monitor.sources[page.name] = {
+        ok: false,
+        error: error.message
+      };
+
+      console.error(`D4 Страж ${page.name}:`, error.message);
+    }
+  }
 
   return found;
 }
@@ -268,7 +410,7 @@ async function checkAllSources() {
   const checks = [
     ["blizzard", checkBlizzardNews],
     ["forum", checkBlizzardForum],
-    ["reddit", checkReddit]
+    ["guides", checkGuides]
   ];
 
   let successes = 0;
@@ -283,10 +425,7 @@ async function checkAllSources() {
         error: error.message
       };
 
-      console.error(
-        `D4 Страж ${name} error:`,
-        error.message
-      );
+      console.error(`D4 Страж ${name}:`, error.message);
     }
   }
 
@@ -295,28 +434,9 @@ async function checkAllSources() {
   }
 
   console.log(
-    `D4 Страж: проверка завершена; новых находок: ${monitor.lastFound}; источники доступны: ${successes}/3`
+    `D4 Страж: новых находок ${monitor.lastFound}; ` +
+    `доступно групп источников ${successes}/${checks.length}`
   );
-}
-
-// Hide old ordinary news without deleting records.
-function hideOldNoise() {
-  const rows = db.prepare(
-    "SELECT id, title, source FROM issues WHERE source = 'Blizzard News'"
-  ).all();
-
-  const update = db.prepare(
-    "UPDATE issues SET status = ? WHERE id = ?"
-  );
-
-  const transaction = db.transaction(() => {
-    for (const row of rows) {
-      const classification = classify(row.title);
-      update.run(classification ? "Unverified" : "Noise", row.id);
-    }
-  });
-
-  transaction();
 }
 
 app.get("/api/issues", (req, res) => {
@@ -325,6 +445,7 @@ app.get("/api/issues", (req, res) => {
       SELECT * FROM issues
       WHERE status != 'Noise'
       ORDER BY id DESC
+      LIMIT 250
     `).all()
   );
 });
@@ -336,9 +457,10 @@ app.post("/api/issues", (req, res) => {
     return res.status(400).json({ error: "Invalid title" });
   }
 
-  const result = db.prepare(
-    "INSERT INTO issues (title) VALUES (?)"
-  ).run(title);
+  const result = db.prepare(`
+    INSERT INTO issues (title, source, category, benefit)
+    VALUES (?, 'Manual', 'OTHER', '')
+  `).run(title);
 
   res.status(201).json(
     db.prepare("SELECT * FROM issues WHERE id = ?")
@@ -369,7 +491,11 @@ app.post("/api/refresh", async (req, res) => {
   });
 });
 
-cron.schedule("*/15 * * * *", checkAllSources);
+cron.schedule("*/15 * * * *", () => {
+  checkAllSources().catch(error =>
+    console.error("Scheduled check failed:", error.message)
+  );
+});
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -377,6 +503,8 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`D4 Страж listening on port ${PORT}`);
-  hideOldNoise();
-  checkAllSources();
+
+  checkAllSources().catch(error =>
+    console.error("Initial check failed:", error.message)
+  );
 });
