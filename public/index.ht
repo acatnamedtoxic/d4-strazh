@@ -1,0 +1,70 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111318">
+  <title>D4 Страж</title>
+  <style>
+    body{margin:0;background:#111318;color:#eee;font:16px system-ui,sans-serif;padding:20px}
+    main{max-width:700px;margin:auto}
+    h1{color:#f0b35a}
+    p{color:#aaa}
+    input,button{box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #444;background:#20232b;color:white;font:inherit}
+    input{width:100%;margin-bottom:8px}
+    button{cursor:pointer;background:#8c271e;border:0}
+    .issue{padding:14px;margin:12px 0;background:#20232b;border-radius:8px;overflow-wrap:anywhere}
+    small{color:#aaa}
+  </style>
+</head>
+<body>
+<main>
+  <h1>⚔️ D4 Страж</h1>
+  <p>Радар багов Diablo IV · мобильная версия</p>
+  <form id="form">
+    <input id="title" maxlength="300" placeholder="Добавить найденный баг..." required>
+    <button type="submit">Добавить запись</button>
+  </form>
+  <h2>Обнаруженные проблемы</h2>
+  <div id="status">Загрузка...</div>
+  <section id="issues"></section>
+</main>
+<script>
+async function load(){
+  const status=document.getElementById('status');
+  try{
+    const r=await fetch('/api/issues');
+    if(!r.ok) throw Error();
+    const data=await r.json();
+    status.textContent=data.length ? 'Записей: '+data.length : 'Пока записей нет';
+    const list=document.getElementById('issues');
+    list.replaceChildren();
+    data.forEach(item=>{
+      const card=document.createElement('article');
+      card.className='issue';
+      const title=document.createElement('div');
+      title.textContent=item.title;
+      const meta=document.createElement('small');
+      meta.textContent='Источник: '+item.source+' · Статус: '+item.status;
+      card.append(title,meta);
+      list.append(card);
+    });
+  }catch(e){status.textContent='Не удалось загрузить данные. Проверь запуск сервера.'}
+}
+document.getElementById('form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const input=document.getElementById('title');
+  const title=input.value.trim();
+  if(!title)return;
+  try{
+    const r=await fetch('/api/issues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});
+    if(!r.ok)throw Error();
+    input.value='';
+    await load();
+  }catch(e){alert('Не удалось сохранить запись.')}
+});
+load();
+</script>
+</body>
+</html>
