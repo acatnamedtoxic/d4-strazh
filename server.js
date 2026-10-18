@@ -29,31 +29,9 @@ const monitor = {
   error: null
 };
 
-const FEED_URL = "https://news.blizzard.com/en-us/feed/diablo-4";
-
-function decodeHtml(value) {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) =>
-      String.fromCodePoint(Number(n))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
-      String.fromCodePoint(parseInt(n, 16))
-    );
-}
-
-function cleanText(value) {
-  return decodeHtml(
-    value
-      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/&nbsp;/g, " ")
-  ).replace(/\s+/g, " ").trim();
-}
+const API_URL =
+  "https://news.blizzard.com/en-us/api/news/blizzard" +
+  "?feedCxpProductIds%5B%5D=blt795c314400d7ded9";
 
 function saveIssue(title, source, url) {
   if (!title || !url) return false;
@@ -78,70 +56,52 @@ async function checkFeed() {
   monitor.error = null;
 
   try {
-    const response = await fetch(FEED_URL, {
+    const response = await fetch(API_URL, {
       headers: {
         "User-Agent": "Mozilla/5.0 D4Strazh/1.0",
-        "Accept": "text/html,application/xml,*/*"
+        "Accept": "application/json"
       },
       signal: AbortSignal.timeout(20000)
     });
 
     if (!response.ok) {
-      throw new Error(`Blizzard HTTP ${response.status}`);
+      throw new Error(`Blizzard API HTTP ${response.status}`);
     }
 
-    const body = await response.text();
+    const data = await response.json();
+    const items = data?.feed?.contentItems;
 
-    console.log("Blizzard response:", {
-  status: response.status,
-  type: response.headers.get("content-type"),
-  finalUrl: response.url,
-  length: body.length,
-  preview: body.slice(0, 500)
-});
+    if (!Array.isArray(items)) {
+      throw new Error(
+        "Blizzard API response has no feed.contentItems array"
+      );
+    }
 
-    const links = [
-      ...body.matchAll(
-        /<a\b[^>]*href=["']([^"']*\/en-us\/article\/[^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>/gi
-      )
-    ];
+    for (const item of items) {
+      const article = item?.properties;
+      if (!article) continue;
 
-    const articles = new Map();
-
-    for (const match of links) {
-      let url = decodeHtml(match[1]).trim();
+      const title = String(article.title || "").trim();
+      let url = String(article.newsUrl || "").trim();
 
       if (url.startsWith("/")) {
         url = "https://news.blizzard.com" + url;
       }
 
-      if (!url.startsWith("https://news.blizzard.com/")) {
+      if (
+        !title ||
+        !url.startsWith("https://news.blizzard.com/")
+      ) {
         continue;
       }
 
-      const title = cleanText(match[2]);
-
-      if (!title || title.length < 8) continue;
-
-      if (!articles.has(url)) {
-        articles.set(url, title);
-      }
-    }
-
-    if (articles.size === 0) {
-      throw new Error(
-        "Blizzard returned a page, but no article links were found"
-      );
-    }
-
-    for (const [url, title] of articles) {
       if (saveIssue(title, "Blizzard News", url)) {
         monitor.lastFound++;
       }
     }
 
     console.log(
-      `D4 Страж: проверка завершена, найдено статей: ${articles.size}, новых записей: ${monitor.lastFound}`
+      `D4 Страж: API OK; статей получено: ${items.length}; новых: ${monitor.lastFound}`
     );
   } catch (error) {
     monitor.error = error.message;
@@ -180,8 +140,7 @@ app.get("/api/state", (req, res) => {
     lastChecked: monitor.lastChecked,
     lastFound: monitor.lastFound,
     error: monitor.error,
-    message: monitor.error ||
-      "Checking official Blizzard news"
+    message: monitor.error || "Checking official Blizzard news API"
   });
 });
 
