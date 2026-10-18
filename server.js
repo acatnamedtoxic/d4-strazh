@@ -92,6 +92,14 @@ async function checkFeed() {
 
     const body = await response.text();
 
+    console.log("Blizzard response:", {
+  status: response.status,
+  type: response.headers.get("content-type"),
+  finalUrl: response.url,
+  length: body.length,
+  preview: body.slice(0, 500)
+});
+
     const links = [
       ...body.matchAll(
         /<a\b[^>]*href=["']([^"']*\/en-us\/article\/[^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>/gi
