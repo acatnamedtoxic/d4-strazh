@@ -8,8 +8,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const db = new Database(process.env.DB_PATH || "strazh.db");
 
-const FEED_URL = "https://news.blizzard.com/en-us/feed/diablo-4";
-
 app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -31,42 +29,23 @@ const monitor = {
   error: null
 };
 
-function decodeXml(value = "") {
-  return value
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
-      String.fromCodePoint(parseInt(n, 16)))
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const FEED_URL = "https://news.blizzard.com/en-us/feed/diablo-4";
 
-function getTag(block, name) {
-  const tag = new RegExp(
-    `<(?:[\\w.-]+:)?${name}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${name}\\s*>`,
-    "i"
-  );
-  return decodeXml(block.match(tag)?.[1] || "");
-}
+function saveIssue(title, source, url) {
+  if (!title || !url) return false;
 
-function getLink(block) {
-  const linkTag = block.match(/<(?:[\w.-]+:)?link\b[^>]*>/i);
-  if (linkTag) {
-    const href = linkTag[0].match(/\bhref=["']([^"']+)["']/i);
-    if (href) return href[1];
+  const exists = db.prepare(
+    "SELECT id FROM issues WHERE url = ? AND url != ''"
+  ).get(url);
 
-    const textLink = block.match(
-      /<(?:[\w.-]+:)?link\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?link\s*>/i
-    );
-    if (textLink) return decodeXml(textLink[1]);
-  }
-  return "";
+  if (exists) return false;
+
+  db.prepare(`
+    INSERT INTO issues (title, source, url, status)
+    VALUES (?, ?, ?, 'Unverified')
+  `).run(title.slice(0, 300), source, url);
+
+  return true;
 }
 
 async function checkFeed() {
@@ -76,7 +55,7 @@ async function checkFeed() {
 
   try {
     const response = await fetch(FEED_URL, {
-      headers: { "User-Agent": "D4Strazh/1.0 personal-news-monitor" },
+      headers: { "User-Agent": "D4Strazh/1.0" },
       signal: AbortSignal.timeout(15000)
     });
 
@@ -84,49 +63,60 @@ async function checkFeed() {
       throw new Error(`Blizzard feed HTTP ${response.status}`);
     }
 
-    const xml = await response.text();
-    const entries = xml.match(
-      /<(?:item|entry)\b[^>]*>[\s\S]*?<\/(?:item|entry)\s*>/gi
+    const body = await response.text();
+    const entries = body.match(
+      /<(item|entry)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
     ) || [];
 
     if (!entries.length) {
-      throw new Error("В ленте не найдены записи; формат мог измениться");
+      throw new Error(
+        "Blizzard feed format is unsupported or contains no entries"
+      );
     }
 
-    const insert = db.prepare(`
-      INSERT INTO issues (title, source, url, status)
-      VALUES (?, ?, ?, ?)
-    `);
+    for (const entry of entries) {
+      const titleMatch = entry.match(
+        /<(?:[\w.-]+:)?title\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?title\s*>/i
+      );
 
-    const exists = db.prepare(
-      "SELECT id FROM issues WHERE url = ? AND url != ''"
-    );
+      const title = (titleMatch?.[1] || "")
+        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+        .replace(/<[^>]*>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .trim();
 
-    const saveEntries = db.transaction(items => {
-      let added = 0;
+      const linkTag = entry.match(/<link\b[^>]*>/i);
+      const href = linkTag?.[0].match(/\bhref=["']([^"']+)["']/i);
+      const textLink = entry.match(
+        /<link\b[^>]*>([\s\S]*?)<\/link\s*>/i
+      );
 
-      for (const entry of items) {
-        const title = getTag(entry, "title");
-        const url = getLink(entry);
-        const description =
-          getTag(entry, "description") || getTag(entry, "summary");
+      const url = href?.[1] || textLink?.[1]?.trim() || "";
 
-        if (!title || !url || !/^https:\/\//i.test(url)) continue;
+      const searchable = entry
+        .replace(/<[^>]*>/g, " ")
+        .toLowerCase();
 
-        const text = `${title} ${description}`.toLowerCase();
-        const relevant =
-          /patch notes|hotfix|exploit|vulnerab|security|cve|bug fix|bug fixes|known issue|security update/.test(text);
+      const relevant =
+        /diablo iv|diablo 4|patch notes|hotfix|exploit|vulnerab|security|cve|known issue/.test(
+          `${title.toLowerCase()} ${searchable}`
+        );
 
-        if (!relevant || exists.get(url)) continue;
-
-        insert.run(title.slice(0, 300), "Blizzard News", url, "Unverified");
-        added++;
+      if (
+        relevant &&
+        title &&
+        /^https:\/\/news\.blizzard\.com\//i.test(url)
+      ) {
+        if (saveIssue(title, "Blizzard News", url)) {
+          monitor.lastFound++;
+        }
       }
+    }
 
-      return added;
-    });
-
-    monitor.lastFound = saveEntries(entries);
     console.log(
       `D4 Страж: проверка завершена, новых записей: ${monitor.lastFound}`
     );
@@ -137,7 +127,9 @@ async function checkFeed() {
 }
 
 app.get("/api/issues", (req, res) => {
-  res.json(db.prepare("SELECT * FROM issues ORDER BY id DESC").all());
+  res.json(
+    db.prepare("SELECT * FROM issues ORDER BY id DESC").all()
+  );
 });
 
 app.post("/api/issues", (req, res) => {
@@ -165,9 +157,8 @@ app.get("/api/state", (req, res) => {
     lastChecked: monitor.lastChecked,
     lastFound: monitor.lastFound,
     error: monitor.error,
-    message: monitor.error
-      ? "Последняя проверка завершилась ошибкой."
-      : "Мониторинг официальной ленты Blizzard."
+    message: monitor.error ||
+      "Monitoring official Blizzard news feed"
   });
 });
 
@@ -176,14 +167,12 @@ app.post("/api/refresh", async (req, res) => {
 
   res.json({
     ok: !monitor.error,
-    message: monitor.error || "Проверка завершена.",
+    message: monitor.error || "Проверка завершена",
     lastFound: monitor.lastFound
   });
 });
 
-cron.schedule("*/15 * * * *", () => {
-  checkFeed();
-});
+cron.schedule("*/15 * * * *", checkFeed);
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
